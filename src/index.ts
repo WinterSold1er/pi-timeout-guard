@@ -17,7 +17,6 @@ const DEFAULT_TIMEOUT =
 // doomed command; it must scope the path and set an explicit timeout instead.
 const RETRY_HINT = " 不要重试相同命令；改用具名子目录 + 显式 timeout。";
 
-// Local view of the tool inputs we touch. We narrow the `tool_call` union by
 // `toolName` (a string on CustomToolCallEvent, so a hard cast is needed at this
 // boundary) rather than importing the runtime `isToolCallEventType` guard. This
 // keeps the compiled extension free of any runtime dependency on the pi package,

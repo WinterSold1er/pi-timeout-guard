@@ -39,6 +39,16 @@ check("heredoc cat with find / body not blocked", () => assert.ok(!analyzeBashCo
 check("heredoc grep with find / body not blocked", () => assert.ok(!analyzeBashCommand("grep -r x /tmp <<EOF\nfind /\nEOF").block));
 check("here-string not blocked", () => assert.ok(!analyzeBashCommand("grep foo <<< 'find /'").block));
 
+// --- N1: execution-form heredocs MUST be blocked (body is run, not data) ---
+check("N1 heredoc piped to bash blocked", () => assert.ok(analyzeBashCommand("cat <<'EOF' | bash\nfind /\nEOF").block));
+check("N1 heredoc (unquoted) piped to bash blocked", () => assert.ok(analyzeBashCommand("cat <<EOF | bash\nfind /\nEOF").block));
+check("N1 bash reads heredoc body blocked", () => assert.ok(analyzeBashCommand("bash <<'EOF'\nfind /\nEOF").block));
+
+// --- N2: `command -v/-V` is a PATH query, must NOT be blocked ---
+check("N2 command -v find / not blocked", () => assert.ok(!analyzeBashCommand("command -v find /").block));
+check("N2 command -V find / not blocked", () => assert.ok(!analyzeBashCommand("command -V find /").block));
+check("N2 command find / still blocked", () => assert.ok(analyzeBashCommand("command find /").block));
+
 // --- bash: bounded / local scans are NOT blocked (prefer false negatives) ---
 check("find /home not blocked", () => assert.ok(!analyzeBashCommand("find /home/user").block));
 check("find . not blocked", () => assert.ok(!analyzeBashCommand("find .").block));

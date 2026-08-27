@@ -32,6 +32,40 @@ function splitStatements(cmd) {
         .map((s) => s.trim())
         .filter(Boolean);
 }
+// A heredoc body is EXECUTED (not mere data) when either:
+//  (a) the opener statement pipes its output into a shell interpreter
+//      (e.g. `cat <<EOF | bash`), or
+//  (b) the first real command word is a shell reading the body inline
+//      (e.g. `bash <<'EOF'`, `sudo sh <<EOF`) without a `-c` external string.
+// Execution-form bodies must be kept so their commands are analyzed; all
+// other heredocs (file writes, here-strings fed to grep/cat, etc.) are data
+// and their bodies must be stripped to avoid false positives.
+const SHELL_WORDS = new Set(["bash", "sh", "zsh", "ksh"]);
+function firstCommandWord(line) {
+    const tokens = tokenize(line);
+    let j = 0;
+    while (j < tokens.length) {
+        const t = stripShellMeta(tokens[j]);
+        if (WRAPPER_WORDS.has(t) ||
+            t.startsWith("-") ||
+            /^[A-Za-z_][A-Za-z0-9_]*=/.test(t)) {
+            j++;
+            continue;
+        }
+        return t;
+    }
+    return "";
+}
+function isHeredocExecutionForm(line) {
+    // (a) pipe to a shell interpreter anywhere in the statement
+    if (/\|\s*\b(ba)?sh\b|\|\s*\bzsh\b|\|\s*\bksh\b/.test(line))
+        return true;
+    // (b) the command word is a shell reading the body, with no -c string
+    const fc = firstCommandWord(line);
+    if (SHELL_WORDS.has(fc) && /<<-?/.test(line) && !/-c\b/.test(line))
+        return true;
+    return false;
+}
 // Remove heredoc/here-string bodies so their literal contents are not analyzed
 // as shell commands. For `<<`/`<<-` the body spans subsequent lines up to a
 // line that is exactly the terminator word; for `<<<` (here-string) the data
@@ -47,8 +81,18 @@ function stripHeredocs(cmd) {
             const term = heredoc[1];
             out.push(line); // keep the opening command; trailing <<TERM is inert for analysis
             i++;
-            while (i < lines.length && lines[i].trim() !== term)
-                i++;
+            if (isHeredocExecutionForm(line)) {
+                // Body is executed: keep each body line so its commands are analyzed.
+                while (i < lines.length && lines[i].trim() !== term) {
+                    out.push(lines[i]);
+                    i++;
+                }
+            }
+            else {
+                // Body is data: drop it entirely.
+                while (i < lines.length && lines[i].trim() !== term)
+                    i++;
+            }
             i++; // consume the terminator line itself
             continue;
         }
@@ -129,6 +173,14 @@ export function analyzeBashCommand(command) {
                 if (WRAPPER_WORDS.has(t) ||
                     t.startsWith("-") ||
                     /^[A-Za-z_][A-Za-z0-9_]*=/.test(t)) {
+                    // `command -v/-V/--version NAME` is a PATH query, not execution;
+                    // treat the rest of the statement as data (skip scanner).
+                    if (t === "command" && i + 1 < tokens.length) {
+                        const nxt = stripShellMeta(tokens[i + 1]);
+                        if (nxt === "-v" || nxt === "-V" || nxt === "--version" || nxt === "--help") {
+                            break; // exit skip-loop; statement is not a scanner
+                        }
+                    }
                     i++;
                     if (t.startsWith("-") && FLAG_WITH_ARG.has(t) && i < tokens.length)
                         i++;

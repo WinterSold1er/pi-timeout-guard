@@ -1,0 +1,46 @@
+{
+  "name": "pi-timeout-guard",
+  "version": "0.1.0",
+  "description": "Pi extension that blocks runaway full-filesystem scans (find /, grep -r /, du /) and injects a default timeout into bash tool calls so sessions and sub-agents cannot hang forever.",
+  "license": "MIT",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-extension",
+    "timeout",
+    "safety",
+    "guard",
+    "subagent"
+  ],
+  "author": "csy",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/WinterSold1er/pi-timeout-guard.git"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/self-check.mjs",
+    "prepublishOnly": "npm run typecheck && npm run test && npm run build"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.79.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.79.10",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  }
+}

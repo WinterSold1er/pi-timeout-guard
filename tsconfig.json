@@ -9,12 +9,7 @@
     "strict": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "paths": {
-      "@earendil-works/pi-coding-agent": [
-        "/home/csy/.pi/agent/npm/node_modules/@earendil-works/pi-coding-agent/dist/index.d.ts"
-      ]
-    }
+    "forceConsistentCasingInFileNames": true
   },
   "include": ["src/**/*.ts"]
 }

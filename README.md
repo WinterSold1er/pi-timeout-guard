@@ -93,14 +93,29 @@ The standalone `find` / `grep` tools are blocked only when their `path` is `/`.
 ## Limitations / edges
 
 - **Sub-agents that are `isolated`** do not inherit global extensions; install
-the package into those agents' extension set separately.
+  the package into those agents' extension set separately.
 - **"宁漏勿误杀"**: a scan rooted at `/home` (or any non-`/` path) is *not*
   blocked even though it could be slow — the guard only targets the literal
   root. Tighten the regex in `src/guard.ts` if you want broader coverage.
-- Complex shell quoting / heredocs can defeat the simple tokenizer; a missed
-dangerous command is allowed through (fail-open), never silently broken.
-- The guard never *modifies* a blocked command — it refuses execution and
-  returns a reason. The model can retry with a scoped path + explicit timeout.
+- **Heredoc / here-string bodies are treated as literal data** (fixed in M2):
+  `cat > f <<'EOF'\nfind /\nEOF` and `grep -r x /tmp <<EOF\nfind /\nEOF` are
+  *allowed* — the body is not executed, so it must not be blocked. The command
+  portion before `<<`/`<<-`/`<<<` is still analyzed normally.
+- **Wrapper / inline-env chains are unwound** (fixed in M1): a leading run of
+  `sudo`/`env`/`time`/`nice`/... plus `-`-flags and `KEY=VAL` assignments (and
+  the value after an arg-taking flag like `sudo -u root`) is skipped so the real
+  scanner is still caught — `sudo -u root find /`, `env FOO=bar find /`,
+  `GOOS=linux find /`, `time -v grep -r x /` are all blocked.
+- **Still leaks by design (group A — NOT fixed, see below).** The following are
+  *allowed through* on purpose; they require a real shell parser:
+  - **A1** `bash -c "find /"` — command hidden inside a quoted string arg.
+  - **A2** `$(find /)` / backtick command substitution.
+  - **A3** shell function definitions whose body contains a scan.
+  - **A4** `timeout: 0` on a bash call is treated as *invalid* and replaced by
+    the default 60s injection (so `timeout:0` cannot disable the guard).
+- The guard never *modifies* a blocked command — it refuses execution with a
+  reason that also warns **not to retry the same command**; use a named
+  subdirectory + explicit timeout instead.
 
 ## Develop
 

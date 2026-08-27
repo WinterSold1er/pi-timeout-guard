@@ -16,12 +16,52 @@ const SCANNER_TOOLS = {
     ack: { needsRecursiveFlag: false },
 };
 const WRAPPER_WORDS = new Set(["sudo", "env", "time", "command", "nohup", "nice"]);
+// Flags that consume one following argument, so the value token after them
+// must also be skipped (e.g. `sudo -u root`, `nice -n 19`, `env -C /dir`).
+// Without this, the value (`root`, `19`) would be mistaken for the tool name
+// and a real scanner like `find` right after it would be missed.
+const FLAG_WITH_ARG = new Set(["-u", "-g", "-D", "-R", "-n", "-C", "-S", "-o"]);
 function splitStatements(cmd) {
-    // Split on shell statement separators. Good enough for danger detection.
-    return cmd
-        .split(/;|\|\|&&|\||\n/)
+    // Strip heredoc bodies BEFORE splitting so literal data inside <<EOF ... EOF
+    // is never treated as a command. The `cat > f <<'EOF'\nfind /\nEOF` case must
+    // NOT be blocked; the body is data, not an executed statement. We keep the
+    // opening command line but drop everything from the terminator onward.
+    const cleaned = stripHeredocs(cmd);
+    return cleaned
+        .split(/;|\|\||&&|\||\n/)
         .map((s) => s.trim())
         .filter(Boolean);
+}
+// Remove heredoc/here-string bodies so their literal contents are not analyzed
+// as shell commands. For `<<`/`<<-` the body spans subsequent lines up to a
+// line that is exactly the terminator word; for `<<<` (here-string) the data
+// is the rest of the same line, which we truncate away.
+function stripHeredocs(cmd) {
+    const lines = cmd.split("\n");
+    const out = [];
+    let i = 0;
+    while (i < lines.length) {
+        const line = lines[i];
+        const heredoc = line.match(/<<-?\s*['\"]?([A-Za-z0-9_]+)['\"]?/);
+        if (heredoc) {
+            const term = heredoc[1];
+            out.push(line); // keep the opening command; trailing <<TERM is inert for analysis
+            i++;
+            while (i < lines.length && lines[i].trim() !== term)
+                i++;
+            i++; // consume the terminator line itself
+            continue;
+        }
+        if (/<<</.test(line)) {
+            // here-string: command is the part BEFORE <<<; data after is literal
+            out.push(line.slice(0, line.indexOf("<<<")).trim());
+            i++;
+            continue;
+        }
+        out.push(line);
+        i++;
+    }
+    return out.join("\n");
 }
 function tokenize(stmt) {
     const tokens = [];
@@ -80,8 +120,22 @@ export function analyzeBashCommand(command) {
             if (tokens.length === 0)
                 continue;
             let i = 0;
-            while (i < tokens.length && WRAPPER_WORDS.has(stripShellMeta(tokens[i])))
-                i++;
+            // Skip a leading chain of: wrapper words (sudo/env/...), `-`-prefixed
+            // flags, and `KEY=VAL` assignments, plus the single value token after a
+            // flag that consumes one (see FLAG_WITH_ARG). Stops at the first real
+            // command word.
+            while (i < tokens.length) {
+                const t = stripShellMeta(tokens[i]);
+                if (WRAPPER_WORDS.has(t) ||
+                    t.startsWith("-") ||
+                    /^[A-Za-z_][A-Za-z0-9_]*=/.test(t)) {
+                    i++;
+                    if (t.startsWith("-") && FLAG_WITH_ARG.has(t) && i < tokens.length)
+                        i++;
+                    continue;
+                }
+                break;
+            }
             if (i >= tokens.length)
                 continue;
             const tool = toolNameOf(tokens[i]);

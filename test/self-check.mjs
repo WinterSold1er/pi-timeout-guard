@@ -23,12 +23,29 @@ check("grep -r / blocked", () => assert.ok(analyzeBashCommand("grep -r /").block
 check("grep -rl pattern / blocked", () => assert.ok(analyzeBashCommand("grep -rl pattern /").block));
 check("rg -uu / blocked", () => assert.ok(analyzeBashCommand("rg -uu /").block));
 
+// --- M1: wrapper/inline-env words with args must NOT leak (all blocked) ---
+check("sudo -u root find / blocked", () => assert.ok(analyzeBashCommand("sudo -u root find /").block));
+check("sudo -E find / blocked", () => assert.ok(analyzeBashCommand("sudo -E find /").block));
+check("env FOO=bar find / blocked", () => assert.ok(analyzeBashCommand("env FOO=bar find /").block));
+check("GOOS=linux find / blocked", () => assert.ok(analyzeBashCommand("GOOS=linux find /").block));
+check("VAR=val find / blocked", () => assert.ok(analyzeBashCommand("VAR=val find /").block));
+check("time -v find / blocked", () => assert.ok(analyzeBashCommand("time -v find /").block));
+check("nice -n 19 find / blocked", () => assert.ok(analyzeBashCommand("nice -n 19 find /").block));
+check("time -v grep -r x / blocked", () => assert.ok(analyzeBashCommand("time -v grep -r x /").block));
+check("env -C / sudo find / blocked", () => assert.ok(analyzeBashCommand("env -C / sudo find /").block));
+
+// --- M2: heredoc body is literal data, must NOT be blocked ---
+check("heredoc cat with find / body not blocked", () => assert.ok(!analyzeBashCommand("cat > /tmp/x <<'EOF'\nfind /\nEOF").block));
+check("heredoc grep with find / body not blocked", () => assert.ok(!analyzeBashCommand("grep -r x /tmp <<EOF\nfind /\nEOF").block));
+check("here-string not blocked", () => assert.ok(!analyzeBashCommand("grep foo <<< 'find /'").block));
+
 // --- bash: bounded / local scans are NOT blocked (prefer false negatives) ---
 check("find /home not blocked", () => assert.ok(!analyzeBashCommand("find /home/user").block));
 check("find . not blocked", () => assert.ok(!analyzeBashCommand("find .").block));
 check("./find / not blocked", () => assert.ok(!analyzeBashCommand("./find /").block));
 check("/usr/bin/find / not blocked? (path-qualified cmd)", () => assert.ok(!analyzeBashCommand("/usr/bin/find .").block));
 check("grep -r /home not blocked (bounded)", () => assert.ok(!analyzeBashCommand("grep -r /home/user").block));
+check("grep -r x /home not blocked (bounded)", () => assert.ok(!analyzeBashCommand("grep -r x /home").block));
 check("grep / (no -r) not blocked", () => assert.ok(!analyzeBashCommand("grep /").block));
 check("ls / not blocked", () => assert.ok(!analyzeBashCommand("ls /").block));
 check("cat /etc/passwd not blocked", () => assert.ok(!analyzeBashCommand("cat /etc/passwd").block));

@@ -4,6 +4,9 @@ import { analyzeBashCommand, analyzeToolPath, injectBashTimeout, DEFAULT_TIMEOUT
 const DEFAULT_TIMEOUT = Number(process.env.PI_TIMEOUT_GUARD_SECONDS) > 0
     ? Number(process.env.PI_TIMEOUT_GUARD_SECONDS)
     : DEFAULT_TIMEOUT_SECONDS;
+// Appended to every block reason so a model does not spin retrying the same
+// doomed command; it must scope the path and set an explicit timeout instead.
+const RETRY_HINT = " 不要重试相同命令；改用具名子目录 + 显式 timeout。";
 /**
  * pi-timeout-guard extension factory.
  *
@@ -19,7 +22,7 @@ export default function timeoutGuard(pi) {
                 const input = event.input;
                 const verdict = analyzeBashCommand(input.command);
                 if (verdict.block)
-                    return { block: true, reason: verdict.reason };
+                    return { block: true, reason: verdict.reason + RETRY_HINT };
                 const patched = injectBashTimeout(input, DEFAULT_TIMEOUT);
                 if (patched.timeout !== input.timeout) {
                     input.timeout = patched.timeout;
@@ -29,13 +32,13 @@ export default function timeoutGuard(pi) {
             if (event.toolName === "grep") {
                 const v = analyzeToolPath("grep", event.input.path);
                 if (v.block)
-                    return { block: true, reason: v.reason };
+                    return { block: true, reason: v.reason + RETRY_HINT };
                 return;
             }
             if (event.toolName === "find") {
                 const v = analyzeToolPath("find", event.input.path);
                 if (v.block)
-                    return { block: true, reason: v.reason };
+                    return { block: true, reason: v.reason + RETRY_HINT };
                 return;
             }
         }
